@@ -1,5 +1,5 @@
-import copy 
-
+import copy
+import sys
 
 class Utils:
     def __init__(self):
@@ -12,7 +12,65 @@ class Utils:
             source = f.read()
         return source
 
+    @staticmethod
+    def parseValue(value: str, mode=None, memory={}) -> str:
+        v = value.strip(SYM.DOT)
+        val = ''
+        try:
+            if v not in memory:
+                raise ValueInexistantError
+            val = memory[v]
 
+        except ValueInexistantError as e:
+            e.tell_error(v)
+            sys.exit()
+
+        return '{}'.format(val)
+        
+
+    @staticmethod
+    def parseFunc(f: str, mode=None, memory={}) -> str:
+        v = f.split(SYM.LEFT_ROUND)
+        name = v[0]
+        vals = v[1][:-1].replace(SYM.SPACE, '')
+        values = vals.split(SYM.COMMA)
+        for i, v in enumerate(values):
+            if not v.isnumeric():
+                try:
+                    if v not in memory:
+                        raise ValueInexistantError
+                    values[i] = memory[v]
+                except ValueInexistantError:
+                    print('did not find value '.format(v))
+                    sys.exit()
+
+        return '{}({})'.format(name.strip(), ','.join(values))
+
+    @staticmethod
+    def parseShorthand(s: str, mode=None, memory={}) -> str:
+        values = s.split(SYM.SPACE)
+        for i, v in enumerate(values):
+            if v[:2] == SYM.DOT * 2:
+                val = v[2:]
+                try:
+                    if val not in memory:
+                        raise ValueInexistantError
+                    values[i] = memory[val]
+                except ValueInexistantError:
+                    print('did not find value {}'.format(val))
+                    sys.exit()
+
+        return '{}'.format(' '.join(values))
+
+class Error(Exception):
+    pass
+
+class ValueInexistantError(Error):
+    '''val not found'''
+    def __init__(self):
+        super().__init__
+    def tell_error(self, val):
+        print('Error: did not find value:', val)
 
 class SYM:
     LEFT_BRACE = '{'
@@ -29,10 +87,6 @@ class SYM:
     UNION = '-'
     DOT = '.'
     AT = '@'
-
-KEYWORDS = (SYM.LEFT_BRACE, SYM.RIGHT_BRACE, SYM.NEW_LINE, SYM.TAB, SYM.COLON, 
-    SYM.SEMI_COLON, SYM.SPACE, SYM.RIGHT_ROUND, SYM.LEFT_ROUND, SYM.COMMA, SYM.EQUAL)
-
 
 class Lexer:
     # https://www.pythonmembers.club/2018/05/01/building-a-lexer-in-python-tutorial/
@@ -132,35 +186,37 @@ class Tree:
                     self.last_value = self.current_value.strip()
                     self.current_value = ''
 
-    def parseFunc(self, f: str) -> str:
-        v = f.split(SYM.LEFT_ROUND)
-        name = v[0]
-        vals = v[1][:-1].replace(SYM.SPACE, '')
-        values = vals.split(SYM.COMMA)
-        for i, v in enumerate(values):
-            if not v.isnumeric():
-                values[i] = self.memory[v]
-        return '{}({})'.format(name.strip(), ','.join(values))
 
     def parse(self) -> None:
         self.ntree = copy.deepcopy(self.tree)
 
         for block_name in self.ntree:
             properties = self.ntree[block_name]
-            if block_name[0] == SYM.AT:
-                continue
+
             for element in properties:
                 value = properties[element]
                 if SYM.LEFT_ROUND in value:
-                    self.tree[block_name][element] = self.parseFunc(value)
-                if SYM.DOT in value:
-                    self.tree[block_name][element] = self.memory[value.strip(SYM.DOT)]
+                    self.tree[block_name][element] = Utils.parseFunc(value, memory=self.memory)
+                if element == 'border':
+                    self.tree[block_name][element] = Utils.parseShorthand(value, memory=self.memory)
+                elif value[:2] == SYM.DOT*2 and SYM.SPACE not in value:
+                    self.tree[block_name][element] = Utils.parseValue(value, memory=self.memory)
                 if SYM.AT in element:
                     del self.tree[block_name][element]
                     self.tree[block_name].update(self.tree[element])
 
-    def output(self, css_filename: str, mode="compile") -> None:
-        if mode == 'compile':
+    def output(self, css_filename="compiled.css", mode="compile") -> None:
+        if mode == 'console':
+            for key in self.tree:
+                if key[0] == SYM.AT:
+                    continue
+                print('{}{{{}'.format(key, SYM.NEW_LINE), end='')
+                for elem in self.tree[key]:
+                    print('{}{}: {};{}'.format(SYM.TAB, elem, 
+                        self.tree[key][elem], SYM.NEW_LINE), end='')
+                print('}}{}'.format(SYM.NEW_LINE*2), end='')
+
+        elif mode == 'compile':
             with open(css_filename, 'w+', encoding='utf8') as f:
                 for key in self.tree:
                     if key[0] == SYM.AT:
@@ -171,15 +227,20 @@ class Tree:
                             self.tree[key][elem], SYM.NEW_LINE))
                     f.write('}}{}'.format(SYM.NEW_LINE*2))
 
+KEYWORDS = (SYM.LEFT_BRACE, SYM.RIGHT_BRACE, SYM.NEW_LINE, SYM.TAB, SYM.COLON, 
+    SYM.SEMI_COLON, SYM.SPACE, SYM.RIGHT_ROUND, SYM.LEFT_ROUND, SYM.COMMA, SYM.EQUAL)
 
-source = Utils.read_source('source.dot')
-v = Lexer(source, KEYWORDS)
-lexemes = v.get_lexemes()
-# print(lexemes)
+if __name__ == '__main__':
+    source = Utils.read_source('source.dot')
+    v = Lexer(source, KEYWORDS)
+    lexemes = v.get_lexemes()
+    # print(lexemes)
 
-tree = Tree(lexemes)
-tree.gen()
-print(tree.tree)
-tree.parse()
-print(tree.tree)
-tree.output('compiled.css')
+    tree = Tree(lexemes)
+    tree.gen()
+    print(tree.tree)
+    tree.parse()
+    print(tree.tree)
+    tree.output(mode='console')
+
+# TODO: write general parse to tackle inside func

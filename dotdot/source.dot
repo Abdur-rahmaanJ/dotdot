@@ -3,19 +3,21 @@ x = 1
 y = 5
 x-y-z = 6
 col-z = berry
+size = 10px
 
 @f{
-    border: 10px solid black;
     border-radius: 50%;
+    border: ..size solid black;
 }
 
 .add{
-    color:white;
+    color: white;
     background-color: rgb(3, 4, 5);
 }
 
 #ad{
     color: rgb(x, 4, 5);
+
 }
 
 .a div a{
